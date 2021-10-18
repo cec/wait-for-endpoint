@@ -16,6 +16,7 @@ Usage:
     uri                         a valid http(s) URI
     -s | --strict               Only execute COMMAND if the test succeeds
     -q | --quiet                Don't output any status messages
+    -c | --code                 Expected HTTP status code
     -t TIMEOUT | --timeout=TIMEOUT
                                 Timeout in seconds, zero for no timeout
     -- COMMAND ARGS             Command with args to run after the test finishes
@@ -26,7 +27,7 @@ USAGE
 wait_for()
 {
     if [[ $TIMEOUT -gt 0 ]]; then
-        echoerr "$SCRIPT_NAME: waiting $TIMEOUT seconds for $URI"
+        echoerr "$SCRIPT_NAME: waiting $TIMEOUT seconds for $URI to get a $EXPECTEDCODE HTTP code"
     else
         echoerr "$SCRIPT_NAME: waiting for $URI without a timeout"
     fi
@@ -34,7 +35,7 @@ wait_for()
     while :
     do
             STATUS_CODE=$(curl --connect-timeout 2 --insecure -s -o /dev/null -w ''%{http_code}'' $URI)
-            test "$STATUS_CODE" == "200"
+            test "$STATUS_CODE" == "$EXPECTEDCODE"
             OUTCOME=$?
         if [[ $OUTCOME -eq 0 ]]; then
             WAIT_END_TS=$(date +%s)
@@ -51,9 +52,9 @@ wait_for_wrapper()
 {
     # In order to support SIGINT during timeout: http://unix.stackexchange.com/a/57692
     if [[ $QUIET -eq 1 ]]; then
-        timeout $BUSY_BOX_TIMEFLAG $TIMEOUT $0 $URI --quiet --child --timeout=$TIMEOUT &
+        timeout $BUSY_BOX_TIMEFLAG $TIMEOUT $0 $URI --quiet --child --timeout=$TIMEOUT --code=$EXPECTEDCODE &
     else
-        timeout $BUSY_BOX_TIMEFLAG $TIMEOUT $0 $URI --child --timeout=$TIMEOUT &
+        timeout $BUSY_BOX_TIMEFLAG $TIMEOUT $0 $URI --child --timeout=$TIMEOUT --code=$EXPECTEDCODE &
     fi
     SUBPROCESS_PID=$!
     trap "kill -INT -$SUBPROCESS_PID" INT
@@ -101,6 +102,15 @@ do
         STRICT=1
         shift 1
         ;;
+        -c)
+        EXPECTEDCODE="$2"
+        if [[ $EXPECTEDCODE == "" ]]; then break; fi
+        shift 2
+        ;;
+        --code=*)
+        EXPECTEDCODE="${1#*=}"
+        shift 1
+        ;;
         -t)
         TIMEOUT="$2"
         if [[ $TIMEOUT == "" ]]; then break; fi
@@ -135,9 +145,9 @@ if [[ "$URI" == "" ]]; then
 fi
 validate_uri
 
-
 TIMEOUT=${TIMEOUT:-15}
 STRICT=${STRICT:-0}
+EXPECTEDCODE=${EXPECTEDCODE:-200}
 CHILD=${CHILD:-0}
 QUIET=${QUIET:-0}
 
